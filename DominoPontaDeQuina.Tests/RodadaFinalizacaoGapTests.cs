@@ -1,6 +1,7 @@
 using DominoPontaDeQuina.Core.Enums;
 using DominoPontaDeQuina.Core.Models;
 using System.Reflection;
+using System.Collections.ObjectModel;
 
 namespace DominoPontaDeQuina.Core.Tests;
 
@@ -19,7 +20,7 @@ public class RodadaFinalizacaoGapTests
         var jogadorComPecas = new MaoJogador(new Jogador("Bob"));
         jogadorComPecas.AdicionarPeca(new Peca(1, 1));
 
-        ConfigurarRodada(rodada, [jogadorSemPecas, jogadorComPecas], StatusRodada.EmAndamento);
+        rodada.Iniciar(new ReadOnlyCollection<Jogador>(new[] { jogadorSemPecas.Jogador, jogadorComPecas.Jogador }));
 
         var houveBatida = rodada.VerificarBatida();
 
@@ -45,7 +46,7 @@ public class RodadaFinalizacaoGapTests
         jogadorA.AdicionarPeca(new Peca(3, 4));
         jogadorB.AdicionarPeca(new Peca(6, 6));
 
-        ConfigurarRodada(rodada, [jogadorA, jogadorB], StatusRodada.EmAndamento);
+        rodada.Iniciar(new ReadOnlyCollection<Jogador>(new[] { jogadorA.Jogador, jogadorB.Jogador }));
 
         var travou = rodada.VerificarTabuleiroTravado();
 

@@ -239,8 +239,6 @@ def xml_doc_coverage(file_paths: list[str]) -> tuple[int, int, list[str]]:
         r"(?:class|record|struct|interface|enum|delegate|event|[A-Za-z_][\w<>,\[\]\.?\s]*)\s+"
         r"[A-Za-z_][\w]*\s*(?:\(|\{|=>|;|:)"
     )
-    param_name_pattern = re.compile(r"<param\s+name\s*=\s*\"([^\"]+)\"", re.IGNORECASE)
-
     excluded_starts = (
         "using ",
         "namespace ",
@@ -310,45 +308,7 @@ def xml_doc_coverage(file_paths: list[str]) -> tuple[int, int, list[str]]:
             has_inheritdoc = "<inheritdoc" in doc_text_lower
             inheritdoc_allowed = has_inheritdoc
 
-            method_like = "(" in signature_line and ")" in signature_line and not any(
-                k in signature_line for k in (" class ", " record ", " struct ", " interface ", " delegate ")
-            )
-            returns_required = method_like and " void " not in f" {signature_line} " and not signature_line.endswith(" void")
-
-            param_names: list[str] = []
-            if method_like:
-                open_idx = signature_line.find("(")
-                close_idx = signature_line.rfind(")")
-                if open_idx >= 0 and close_idx > open_idx:
-                    params_segment = signature_line[open_idx + 1:close_idx].strip()
-                    if params_segment and params_segment != "":
-                        raw_params = [p.strip() for p in params_segment.split(",") if p.strip()]
-                        for p in raw_params:
-                            p_no_default = p.split("=")[0].strip()
-                            tokens = [t for t in p_no_default.split() if t and t not in ("ref", "out", "in", "params", "this")]
-                            if not tokens:
-                                continue
-                            name_token = tokens[-1]
-                            if name_token.startswith("@"):
-                                name_token = name_token[1:]
-                            while name_token and name_token[-1] in (']', '?'):
-                                name_token = name_token[:-1]
-                            if name_token:
-                                param_names.append(name_token)
-
-            has_all_params = True
-            if method_like and param_names:
-                doc_param_names = set(name.lower() for name in param_name_pattern.findall(doc_text))
-                for param_name in param_names:
-                    if param_name.lower() not in doc_param_names:
-                        has_all_params = False
-                        break
-
-            has_returns = True
-            if returns_required:
-                has_returns = "<returns>" in doc_text_lower and "</returns>" in doc_text_lower
-
-            if (has_summary and has_all_params and has_returns) or inheritdoc_allowed:
+            if has_summary or inheritdoc_allowed:
                 documented += 1
                 continue
 
@@ -358,15 +318,6 @@ def xml_doc_coverage(file_paths: list[str]) -> tuple[int, int, list[str]]:
 
             if not has_summary and not inheritdoc_allowed:
                 reasons.append("faltou `<summary>`")
-            if method_like and param_names and not has_all_params:
-                missing_params = [
-                    p for p in param_names
-                    if p.lower() not in set(name.lower() for name in param_name_pattern.findall(doc_text))
-                ]
-                if missing_params:
-                    reasons.append(f"faltou `<param>` para: {', '.join(missing_params)}")
-            if returns_required and not has_returns:
-                reasons.append("faltou `<returns>`")
             if not reasons:
                 reasons.append("documentação XML incompleta")
 

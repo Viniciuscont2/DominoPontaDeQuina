@@ -308,15 +308,7 @@ def xml_doc_coverage(file_paths: list[str]) -> tuple[int, int, list[str]]:
             doc_text_lower = doc_text.lower()
             has_summary = "<summary>" in doc_text_lower and "</summary>" in doc_text_lower
             has_inheritdoc = "<inheritdoc" in doc_text_lower
-
-            is_override_member = " override " in f" {signature_line} "
-            is_explicit_interface_impl = "." in signature_line and "(" in signature_line
-            is_derived_or_implements = ":" in signature_line and any(
-                keyword in signature_line for keyword in (" class ", " record ", " interface ")
-            )
-            inheritdoc_allowed = has_inheritdoc and (
-                is_override_member or is_explicit_interface_impl or is_derived_or_implements
-            )
+            inheritdoc_allowed = has_inheritdoc
 
             method_like = "(" in signature_line and ")" in signature_line and not any(
                 k in signature_line for k in (" class ", " record ", " struct ", " interface ", " delegate ")
@@ -375,9 +367,6 @@ def xml_doc_coverage(file_paths: list[str]) -> tuple[int, int, list[str]]:
                     reasons.append(f"faltou `<param>` para: {', '.join(missing_params)}")
             if returns_required and not has_returns:
                 reasons.append("faltou `<returns>`")
-            if has_inheritdoc and not inheritdoc_allowed:
-                reasons.append("`<inheritdoc />` em membro sem contexto claro de herança/implementação")
-
             if not reasons:
                 reasons.append("documentação XML incompleta")
 

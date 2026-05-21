@@ -1,6 +1,7 @@
 using DominoPontaDeQuina.Core.Enums;
 using DominoPontaDeQuina.Core.Models;
 using System.Collections.ObjectModel;
+using System.Reflection;
 
 namespace DominoPontaDeQuina.Core.Tests;
 
@@ -39,10 +40,19 @@ public class RodadaGapTests
         var rodada = new Rodada();
         var jogada = new Jogada(new Jogador("Alice"));
 
+        // Mocka a rodada para status EmAndamento
+        ConfigurarStatus(rodada, StatusRodada.EmAndamento);
+
         rodada.RegistrarJogada(jogada);
 
         Assert.Equal(StatusJogada.Aplicada, jogada.Status);
         Assert.Single(rodada.HistoricoJogadas);
         Assert.Same(jogada, rodada.HistoricoJogadas[0]);
+    }
+
+    private static void ConfigurarStatus(Rodada rodada, StatusRodada status)
+    {
+        var statusField = typeof(Rodada).GetField("<Status>k__BackingField", BindingFlags.NonPublic | BindingFlags.Instance)!;
+        statusField.SetValue(rodada, status);
     }
 }

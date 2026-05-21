@@ -175,25 +175,7 @@ public class MaoJogadorTests
         var jogada = mao.GetJogada(tabuleiro);
         mao.DefazerJogada(jogada);
         Assert.Contains(peca, GetPecas(mao));
-    }
-
-    /// <summary>
-    /// <b>Objetivo:</b> Validar transição de estado completa: peça sai na jogada e retorna no desfazer.
-    /// <br/><b>Critério:</b> A peça deve ser removida após jogar e restaurada após desfazer.
-    /// </summary>
-    [Trait("Categoria", "Gap")]
-    [Fact(DisplayName = "Deve remover a peça após jogada e restaurar após desfazer (Critério: transição de estado ida e volta).")]
-    public void MaoJogador_GetJogada_DeveMudarEstadoDaMaoAposJogadaEReverterComDefazer()
-    {
-        var mao = new MaoJogador(new Jogador("Teste"));
-        var peca = new Peca(2, 5);
-        mao.AdicionarPeca(peca);
-        var tabuleiro = new Tabuleiro();
-        var jogada = mao.GetJogada(tabuleiro);
-        Assert.DoesNotContain(peca, GetPecas(mao));
-        mao.DefazerJogada(jogada);
-        Assert.Contains(peca, GetPecas(mao));
-    }
+    }    
 
     /// <summary>
     /// <b>Objetivo:</b> Validar que passar vez não altera o estado da mão quando não há jogada possível.

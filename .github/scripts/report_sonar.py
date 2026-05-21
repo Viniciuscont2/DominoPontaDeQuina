@@ -4,6 +4,7 @@ import re
 import subprocess
 import urllib.parse
 import urllib.request
+import urllib.error
 import xml.etree.ElementTree as ET
 
 SONAR_HOST = "https://sonarcloud.io"
@@ -19,8 +20,19 @@ def api_get(path: str, params: dict[str, str], token: str) -> dict:
 
     req.add_header("Authorization", f"Basic {base64.b64encode(auth).decode('ascii')}")
 
-    with urllib.request.urlopen(req) as resp:
-        return json.loads(resp.read().decode("utf-8"))
+    try:
+        with urllib.request.urlopen(req) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        body = ""
+        try:
+            body = exc.read().decode("utf-8", errors="ignore")
+        except Exception:
+            body = ""
+
+        raise RuntimeError(
+            f"Sonar API error {exc.code} at {path} with params {params}. Response: {body}"
+        ) from exc
 
 
 def rule_keys_by_tag(token: str, tag: str, language: str = "cs") -> list[str]:
@@ -29,18 +41,30 @@ def rule_keys_by_tag(token: str, tag: str, language: str = "cs") -> list[str]:
     keys: list[str] = []
 
     while True:
-        data = api_get(
-            "/api/rules/search",
-            {
-                "languages": language,
-                "types": "CODE_SMELL",
-                "tags": tag,
-                "isTemplate": "false",
-                "p": str(page),
-                "ps": str(page_size),
-            },
-            token,
-        )
+        try:
+            data = api_get(
+                "/api/rules/search",
+                {
+                    "languages": language,
+                    "types": "CODE_SMELL",
+                    "tags": tag,
+                    "p": str(page),
+                    "ps": str(page_size),
+                },
+                token,
+            )
+        except RuntimeError:
+            # Fallback for SonarCloud parameter incompatibilities.
+            data = api_get(
+                "/api/rules/search",
+                {
+                    "languages": language,
+                    "tags": tag,
+                    "p": str(page),
+                    "ps": str(page_size),
+                },
+                token,
+            )
 
         rules = data.get("rules", [])
         keys.extend([rule.get("key", "") for rule in rules if rule.get("key")])
@@ -361,14 +385,28 @@ def main() -> None:
                 summary.write(f"- `{file}`\n")
             return
 
-        qg_status = quality_gate_status(token, project_key, pr_number)
-        convention_rule_keys = rule_keys_by_tag(token, "convention")
-        convention_smells = issues_total_by_rules(token, project_key, pr_number, convention_rule_keys)
+        try:
+            qg_status = quality_gate_status(token, project_key, pr_number)
+        except RuntimeError:
+            qg_status = "UNKNOWN"
+
+        try:
+            convention_rule_keys = rule_keys_by_tag(token, "convention")
+        except RuntimeError:
+            convention_rule_keys = []
+
+        try:
+            convention_smells = issues_total_by_rules(token, project_key, pr_number, convention_rule_keys)
+        except RuntimeError:
+            convention_smells = 0
         changed_cs = changed_cs_files(base_ref)
         xml_documented, xml_required = xml_doc_coverage(changed_cs)
 
         if convention_smells == 0 and convention_rule_keys:
-            convention_smells = issues_total_by_tag(token, project_key, pr_number, "convention")
+            try:
+                convention_smells = issues_total_by_tag(token, project_key, pr_number, "convention")
+            except RuntimeError:
+                convention_smells = 0
         total_new_lines = new_lines(token, project_key, pr_number)
         total_changed_lines = changed_lines(base_ref)
         total_scoped_lines = max(total_new_lines, total_changed_lines)

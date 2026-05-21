@@ -409,6 +409,10 @@ def naming_convention_check(file_paths: list[str]) -> tuple[int, int, list[str]]
         r"(?:(?:static|readonly|volatile|new)\s+)*"
         r"[A-Za-z_][\w<>,\[\]\.?\s]*\s+([A-Za-z_][A-Za-z0-9_]*)\s*(?:=|;)"
     )
+    const_field_pat = re.compile(
+        r"^\s*(public|protected|internal|private)\s+"
+        r"const\s+[A-Za-z_][\w<>,\[\]\.?\s]*\s+([A-Za-z_][A-Za-z0-9_]*)\s*="
+    )
     local_pat = re.compile(r"\b(?:var|bool|byte|sbyte|short|ushort|int|uint|long|ulong|float|double|decimal|string|char|object|DateTime|Guid)\s+([A-Za-z_][A-Za-z0-9_]*)\s*(?:=|;)")
 
     checked = 0
@@ -451,6 +455,18 @@ def naming_convention_check(file_paths: list[str]) -> tuple[int, int, list[str]]
                 if not is_pascal_case(name):
                     violations += 1
                     issues.append(f"`{file_path.replace('\\', '/')}:{i+1}` método `{name}` deve usar PascalCase")
+                continue
+
+            m = const_field_pat.match(line)
+            if m:
+                checked += 1
+                name = m.group(2)
+                is_upper_snake = bool(re.match(r"^[A-Z][A-Z0-9_]*$", name))
+                if not (is_pascal_case(name) or is_upper_snake):
+                    violations += 1
+                    issues.append(
+                        f"`{file_path.replace('\\', '/')}:{i+1}` constante `{name}` deve usar PascalCase ou UPPER_SNAKE_CASE"
+                    )
                 continue
 
             m = field_pat.match(line)
@@ -600,34 +616,47 @@ def main() -> None:
         summary.write("\n")
         summary.write("### Pendências de convenções C#\n")
         if not use_local_convention_fallback:
-            summary.write("- Avaliação realizada pelo SonarCloud (tag `convention`).\n")
+            summary.write("Avaliação realizada pelo SonarCloud (tag `convention`).\n\n")
         elif naming_checked <= 0:
-            summary.write("- Nenhum item de nomenclatura aplicável encontrado no escopo alterado.\n")
+            summary.write("Nenhum item de nomenclatura aplicável encontrado no escopo alterado.\n\n")
         elif not naming_issues:
-            summary.write("- Nenhuma pendência de nomenclatura encontrada no escopo alterado.\n")
+            summary.write("Nenhuma pendência de nomenclatura encontrada no escopo alterado.\n\n")
         else:
-            max_items = 30
-            for issue in naming_issues[:max_items]:
-                summary.write(f"- {issue}\n")
-            remaining = len(naming_issues) - max_items
-            if remaining > 0:
-                summary.write(f"- ... e mais **{remaining}** pendência(s).\n")
+            summary.write("| Arquivo:linha | Pendência |\n")
+            summary.write("|---|---|\n")
+            for issue in naming_issues:
+                issue_parts = issue.split("` ", 1)
+                if len(issue_parts) == 2 and issue_parts[0].startswith("`"):
+                    location = issue_parts[0][1:]
+                    message = issue_parts[1]
+                else:
+                    location = "-"
+                    message = issue
+                summary.write(f"| `{location}` | {message} |\n")
+            summary.write("\n")
         if use_local_convention_fallback and not sonar_convention_available:
-            summary.write("- Observação: houve falha ao consultar regras de convenção no Sonar; fallback local aplicado.\n")
+            summary.write("Observação: houve falha ao consultar regras de convenção no Sonar; fallback local aplicado.\n")
         summary.write("\n")
 
         summary.write("### Pendências de documentação XML\n")
         if xml_required <= 0:
-            summary.write("- Não foram encontrados membros públicos/protegidos alterados exigindo documentação XML.\n")
+            summary.write("Não foram encontrados membros públicos/protegidos alterados exigindo documentação XML.\n")
         elif not xml_doc_issues:
-            summary.write("- Nenhuma pendência de documentação XML encontrada no escopo alterado.\n")
+            summary.write("Nenhuma pendência de documentação XML encontrada no escopo alterado.\n")
         else:
-            max_items = 30
-            for issue in xml_doc_issues[:max_items]:
-                summary.write(f"- {issue}\n")
-            remaining = len(xml_doc_issues) - max_items
-            if remaining > 0:
-                summary.write(f"- ... e mais **{remaining}** pendência(s).\n")
+            summary.write("| Arquivo:linha | Membro | Pendência |\n")
+            summary.write("|---|---|---|\n")
+            for issue in xml_doc_issues:
+                issue_parts = issue.split("` ", 2)
+                if len(issue_parts) == 3 and issue_parts[0].startswith("`") and issue_parts[1].startswith("`"):
+                    location = issue_parts[0][1:]
+                    member = issue_parts[1][1:-1]
+                    reason = issue_parts[2].lstrip("-> ").strip()
+                else:
+                    location = "-"
+                    member = "-"
+                    reason = issue
+                summary.write(f"| `{location}` | `{member}` | {reason} |\n")
         summary.write("\n")
         summary.write("### SonarCloud\n")
         summary.write(f"- Quality Gate: **{qg_status}**\n")

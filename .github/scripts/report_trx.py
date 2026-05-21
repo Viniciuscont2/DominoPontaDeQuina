@@ -77,10 +77,6 @@ def main():
         write_section(summary, "Testes de Gap", gap)
         write_section(summary, "Testes de Exceção", exception)
 
-        summary.write("### Critério de Nota (Gaps = 50%)\n")
-        summary.write(f"- Percentual dos testes de gap: **{gap['percentage']:.2f}%**\n")
-        summary.write(f"- Contribuição na nota final (50%): **{gap_contrib:.2f} pontos percentuais**\n")
-
     output_path = os.environ["GITHUB_OUTPUT"]
     with open(output_path, "a", encoding="utf-8") as output:
         output.write(f"basic_failed={basic['failed']}\n")

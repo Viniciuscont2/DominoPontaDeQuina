@@ -22,8 +22,7 @@ public class RodadaGapTests
         var comPeca = new MaoJogador(new Jogador("B"));
         comPeca.AdicionarPeca(new Peca(1, 1));
 
-        ConfigurarFilaJogadores(rodada, [semPecas, comPeca]);
-        ConfigurarStatus(rodada, StatusRodada.EmAndamento);
+        ConfigurarRodada(rodada, [semPecas, comPeca], StatusRodada.EmAndamento);
 
         var houveBatida = rodada.VerificarBatida();
 
@@ -49,8 +48,7 @@ public class RodadaGapTests
         var maoB = new MaoJogador(new Jogador("B"));
         maoB.AdicionarPeca(new Peca(6, 6)); // soma 12
 
-        ConfigurarFilaJogadores(rodada, [maoA, maoB]);
-        ConfigurarStatus(rodada, StatusRodada.EmAndamento);
+        ConfigurarRodada(rodada, [maoA, maoB], StatusRodada.EmAndamento);
 
         var travou = rodada.VerificarTabuleiroTravado();
 
@@ -58,6 +56,18 @@ public class RodadaGapTests
         Assert.Equal(StatusRodada.Finalizada, rodada.Status);
         Assert.Equal(TipoFinalizacaoRodada.TabuleiroTravado, rodada.TipoFinalizacao);
         Assert.Same(maoA.Jogador, rodada.GetVencedor());
+    }
+
+    private static void ConfigurarRodada(Rodada rodada, IEnumerable<MaoJogador> maos, StatusRodada status)
+    {
+        var maosField = typeof(Rodada).GetField("_maosJogadores", BindingFlags.NonPublic | BindingFlags.Instance)!;
+        maosField.SetValue(rodada, new List<MaoJogador>(maos));
+
+        var filaField = typeof(Rodada).GetField("_jogadores", BindingFlags.NonPublic | BindingFlags.Instance)!;
+        filaField.SetValue(rodada, new Queue<MaoJogador>(maos));
+
+        var statusField = typeof(Rodada).GetField("<Status>k__BackingField", BindingFlags.NonPublic | BindingFlags.Instance)!;
+        statusField.SetValue(rodada, status);
     }
 
     private static void ConfigurarFilaJogadores(Rodada rodada, IEnumerable<MaoJogador> maos)

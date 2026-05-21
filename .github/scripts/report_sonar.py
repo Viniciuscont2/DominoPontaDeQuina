@@ -232,7 +232,7 @@ def changed_cs_files(base_ref: str) -> list[str]:
     ]
 
 
-def xml_doc_coverage(file_paths: list[str]) -> tuple[int, int]:
+def xml_doc_coverage(file_paths: list[str]) -> tuple[int, int, list[str]]:
     signature_pattern = re.compile(
         r"^\s*(public|protected|internal)\s+"
         r"(?:(?:static|sealed|abstract|virtual|override|partial|readonly|async|unsafe|new)\s+)*"
@@ -256,6 +256,7 @@ def xml_doc_coverage(file_paths: list[str]) -> tuple[int, int]:
 
     required = 0
     documented = 0
+    issues: list[str] = []
 
     for file_path in file_paths:
         if not os.path.exists(file_path):
@@ -357,8 +358,124 @@ def xml_doc_coverage(file_paths: list[str]) -> tuple[int, int]:
 
             if (has_summary and has_all_params and has_returns) or inheritdoc_allowed:
                 documented += 1
+                continue
 
-    return documented, required
+            relative_path = file_path.replace("\\", "/")
+            member_id = signature_line
+            reasons: list[str] = []
+
+            if not has_summary and not inheritdoc_allowed:
+                reasons.append("faltou `<summary>`")
+            if method_like and param_names and not has_all_params:
+                missing_params = [
+                    p for p in param_names
+                    if p.lower() not in set(name.lower() for name in param_name_pattern.findall(doc_text))
+                ]
+                if missing_params:
+                    reasons.append(f"faltou `<param>` para: {', '.join(missing_params)}")
+            if returns_required and not has_returns:
+                reasons.append("faltou `<returns>`")
+            if has_inheritdoc and not inheritdoc_allowed:
+                reasons.append("`<inheritdoc />` em membro sem contexto claro de herança/implementação")
+
+            if not reasons:
+                reasons.append("documentação XML incompleta")
+
+            issues.append(f"`{relative_path}:{i + 1}` `{member_id}` -> {', '.join(reasons)}")
+
+    return documented, required, issues
+
+
+def is_pascal_case(name: str) -> bool:
+    return bool(re.match(r"^[A-Z][A-Za-z0-9]*$", name))
+
+
+def is_camel_case(name: str) -> bool:
+    return bool(re.match(r"^[a-z][A-Za-z0-9]*$", name))
+
+
+def naming_convention_check(file_paths: list[str]) -> tuple[int, int, list[str]]:
+    class_pat = re.compile(r"^\s*(public|protected|internal|private)?\s*(?:abstract\s+|sealed\s+|static\s+|partial\s+)*class\s+([A-Za-z_][A-Za-z0-9_]*)")
+    record_pat = re.compile(r"^\s*(public|protected|internal|private)?\s*(?:abstract\s+|sealed\s+|static\s+|partial\s+)*record\s+([A-Za-z_][A-Za-z0-9_]*)")
+    interface_pat = re.compile(r"^\s*(public|protected|internal|private)?\s*interface\s+([A-Za-z_][A-Za-z0-9_]*)")
+    enum_pat = re.compile(r"^\s*(public|protected|internal|private)?\s*enum\s+([A-Za-z_][A-Za-z0-9_]*)")
+    method_pat = re.compile(
+        r"^\s*(public|protected|internal|private)\s+"
+        r"(?:(?:static|virtual|override|abstract|async|sealed|new|partial|unsafe)\s+)*"
+        r"[A-Za-z_][\w<>,\[\]\.?\s]*\s+([A-Za-z_][A-Za-z0-9_]*)\s*\("
+    )
+    field_pat = re.compile(
+        r"^\s*(public|protected|internal|private)\s+"
+        r"(?:(?:static|readonly|volatile|new)\s+)*"
+        r"[A-Za-z_][\w<>,\[\]\.?\s]*\s+([A-Za-z_][A-Za-z0-9_]*)\s*(?:=|;)"
+    )
+    local_pat = re.compile(r"\b(?:var|bool|byte|sbyte|short|ushort|int|uint|long|ulong|float|double|decimal|string|char|object|DateTime|Guid)\s+([A-Za-z_][A-Za-z0-9_]*)\s*(?:=|;)")
+
+    checked = 0
+    violations = 0
+    issues: list[str] = []
+
+    for file_path in file_paths:
+        if not os.path.exists(file_path):
+            continue
+        with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+            lines = f.readlines()
+
+        for i, raw in enumerate(lines):
+            line = raw.strip()
+            if not line or line.startswith("//"):
+                continue
+
+            m = class_pat.match(line) or record_pat.match(line) or enum_pat.match(line)
+            if m:
+                checked += 1
+                name = m.group(2)
+                if not is_pascal_case(name):
+                    violations += 1
+                    issues.append(f"`{file_path.replace('\\', '/')}:{i+1}` tipo `{name}` deve usar PascalCase")
+                continue
+
+            m = interface_pat.match(line)
+            if m:
+                checked += 1
+                name = m.group(2)
+                if not (is_pascal_case(name) and name.startswith("I") and len(name) > 1 and name[1].isupper()):
+                    violations += 1
+                    issues.append(f"`{file_path.replace('\\', '/')}:{i+1}` interface `{name}` deve seguir padrão `I` + PascalCase")
+                continue
+
+            m = method_pat.match(line)
+            if m:
+                checked += 1
+                name = m.group(2)
+                if not is_pascal_case(name):
+                    violations += 1
+                    issues.append(f"`{file_path.replace('\\', '/')}:{i+1}` método `{name}` deve usar PascalCase")
+                continue
+
+            m = field_pat.match(line)
+            if m:
+                checked += 1
+                access = m.group(1)
+                name = m.group(2)
+                if access == "private":
+                    ok = is_camel_case(name) or (name.startswith("_") and len(name) > 1 and is_camel_case(name[1:]))
+                    if not ok:
+                        violations += 1
+                        issues.append(f"`{file_path.replace('\\', '/')}:{i+1}` campo privado `{name}` deve ser `_camelCase` ou `camelCase`")
+                else:
+                    if not is_pascal_case(name):
+                        violations += 1
+                        issues.append(f"`{file_path.replace('\\', '/')}:{i+1}` campo `{name}` deve usar PascalCase")
+                continue
+
+            for local_name in local_pat.findall(line):
+                checked += 1
+                if not is_camel_case(local_name):
+                    violations += 1
+                    issues.append(f"`{file_path.replace('\\', '/')}:{i+1}` variável local `{local_name}` deve usar camelCase")
+
+    return violations, checked, issues
 
 
 def display_score(raw_score: float) -> float:
@@ -390,26 +507,36 @@ def main() -> None:
         except RuntimeError:
             qg_status = "UNKNOWN"
 
+        sonar_convention_available = True
         try:
             convention_rule_keys = rule_keys_by_tag(token, "convention")
         except RuntimeError:
             convention_rule_keys = []
+            sonar_convention_available = False
 
         try:
             convention_smells = issues_total_by_rules(token, project_key, pr_number, convention_rule_keys)
         except RuntimeError:
             convention_smells = 0
         changed_cs = changed_cs_files(base_ref)
-        xml_documented, xml_required = xml_doc_coverage(changed_cs)
+        xml_documented, xml_required, xml_doc_issues = xml_doc_coverage(changed_cs)
 
         if convention_smells == 0 and convention_rule_keys:
             try:
                 convention_smells = issues_total_by_tag(token, project_key, pr_number, "convention")
             except RuntimeError:
                 convention_smells = 0
+                sonar_convention_available = False
         total_new_lines = new_lines(token, project_key, pr_number)
         total_changed_lines = changed_lines(base_ref)
         total_scoped_lines = max(total_new_lines, total_changed_lines)
+
+        naming_violations = 0
+        naming_checked = 0
+        naming_issues: list[str] = []
+        use_local_convention_fallback = convention_smells == 0
+        if use_local_convention_fallback:
+            naming_violations, naming_checked, naming_issues = naming_convention_check(changed_cs)
 
         basic_total, basic_passed, basic_failed = trx_stats("TestResults/basic-tests.trx")
         gap_total, gap_passed, gap_failed = trx_stats("TestResults/gap-tests.trx")
@@ -424,10 +551,16 @@ def main() -> None:
         else:
             score_documentation = 10.0 * (xml_documented / xml_required)
 
-        if total_scoped_lines <= 0:
-            score_convention = 0.0
+        if use_local_convention_fallback:
+            if naming_checked <= 0:
+                score_convention = 0.0
+            else:
+                score_convention = max(0.0, 10.0 * (1.0 - (naming_violations / naming_checked)))
         else:
-            score_convention = max(0.0, 10.0 * (1.0 - (convention_smells / total_scoped_lines)))
+            if total_scoped_lines <= 0:
+                score_convention = 0.0
+            else:
+                score_convention = max(0.0, 10.0 * (1.0 - (convention_smells / total_scoped_lines)))
         score_exception = 10.0 * exception_pass_rate
         score_services = 0.0
 
@@ -449,9 +582,14 @@ def main() -> None:
         summary.write(
             f"| Implementação de exceções customizadas | 10% | **{display_score(score_exception):.2f}** | Taxa de aprovação dos testes `Excecao`: **{exception_pass_rate * 100:.2f}%** ({exception_passed}/{exception_total}) |\n"
         )
-        summary.write(
-            f"| Aderência às convenções do C# | 10% | **{display_score(score_convention):.2f}** | Sonar `new_lines` = **{total_new_lines}**, diff linhas alteradas = **{total_changed_lines}**, base de cálculo = `max(new_lines, linhas alteradas)` = **{total_scoped_lines}**, issues por regras C# com tag `convention` = **{convention_smells}** |\n"
-        )
+        if use_local_convention_fallback:
+            summary.write(
+                f"| Aderência às convenções do C# | 10% | **{display_score(score_convention):.2f}** | Fallback local de nomenclatura: itens verificados = **{naming_checked}**, violações = **{naming_violations}** |\n"
+            )
+        else:
+            summary.write(
+                f"| Aderência às convenções do C# | 10% | **{display_score(score_convention):.2f}** | Sonar `new_lines` = **{total_new_lines}**, diff linhas alteradas = **{total_changed_lines}**, base de cálculo = `max(new_lines, linhas alteradas)` = **{total_scoped_lines}**, issues por regras C# com tag `convention` = **{convention_smells}** |\n"
+            )
         summary.write(
             f"| Somatório dos pontos | 80% | **{display_score(score_pipeline + score_documentation + score_exception + score_convention):.2f}** | Pontuação parcial alcançada |\n"
         )
@@ -459,6 +597,37 @@ def main() -> None:
         summary.write(
             "> Observação: `Criação de serviços e validators organizando a lógica do software` `20%` `0.00` `Avaliação manual (não inferida automaticamente)`.\n"
         )
+        summary.write("\n")
+        summary.write("### Pendências de convenções C#\n")
+        if not use_local_convention_fallback:
+            summary.write("- Avaliação realizada pelo SonarCloud (tag `convention`).\n")
+        elif naming_checked <= 0:
+            summary.write("- Nenhum item de nomenclatura aplicável encontrado no escopo alterado.\n")
+        elif not naming_issues:
+            summary.write("- Nenhuma pendência de nomenclatura encontrada no escopo alterado.\n")
+        else:
+            max_items = 30
+            for issue in naming_issues[:max_items]:
+                summary.write(f"- {issue}\n")
+            remaining = len(naming_issues) - max_items
+            if remaining > 0:
+                summary.write(f"- ... e mais **{remaining}** pendência(s).\n")
+        if use_local_convention_fallback and not sonar_convention_available:
+            summary.write("- Observação: houve falha ao consultar regras de convenção no Sonar; fallback local aplicado.\n")
+        summary.write("\n")
+
+        summary.write("### Pendências de documentação XML\n")
+        if xml_required <= 0:
+            summary.write("- Não foram encontrados membros públicos/protegidos alterados exigindo documentação XML.\n")
+        elif not xml_doc_issues:
+            summary.write("- Nenhuma pendência de documentação XML encontrada no escopo alterado.\n")
+        else:
+            max_items = 30
+            for issue in xml_doc_issues[:max_items]:
+                summary.write(f"- {issue}\n")
+            remaining = len(xml_doc_issues) - max_items
+            if remaining > 0:
+                summary.write(f"- ... e mais **{remaining}** pendência(s).\n")
         summary.write("\n")
         summary.write("### SonarCloud\n")
         summary.write(f"- Quality Gate: **{qg_status}**\n")

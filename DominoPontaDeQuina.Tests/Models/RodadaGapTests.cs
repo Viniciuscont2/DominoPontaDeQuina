@@ -60,8 +60,8 @@ public class RodadaGapTests
 
     private static void ConfigurarRodada(Rodada rodada, IEnumerable<MaoJogador> maos, StatusRodada status)
     {
-        var maosField = typeof(Rodada).GetField("_maosJogadores", BindingFlags.NonPublic | BindingFlags.Instance)!;
-        maosField.SetValue(rodada, new List<MaoJogador>(maos));
+        //var maosField = typeof(Rodada).GetField("_maosJogadores", BindingFlags.NonPublic | BindingFlags.Instance)!;
+        //maosField.SetValue(rodada, new List<MaoJogador>(maos));
 
         var filaField = typeof(Rodada).GetField("_jogadores", BindingFlags.NonPublic | BindingFlags.Instance)!;
         filaField.SetValue(rodada, new Queue<MaoJogador>(maos));

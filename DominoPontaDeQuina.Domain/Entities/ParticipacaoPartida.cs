@@ -1,13 +1,12 @@
 namespace DominoPontaDeQuina.Domain.Entities;
 
+/// <summary>Representa a participação de um <see cref="Jogador"/> em uma <see cref="Partida"/>.</summary>
 public class ParticipacaoPartida
 {
-    public Guid Id { get; set; } = Guid.NewGuid();
-    public Guid PartidaId { get; set; }
+    /// <summary>Obtém ou define a pontuação acumulada na participação.</summary>
+    public int Pontos { get; set; }
+    /// <summary>Obtém a partida relacionada.</summary>
     public Partida Partida { get; set; } = null!;
-    public Guid JogadorId { get; set; }
+    /// <summary>Obtém o jogador relacionado.</summary>
     public Jogador Jogador { get; set; } = null!;
-    public int Posicao { get; set; }
-    public int Pontuacao { get; set; }
-    public bool Vencedor { get; set; }
 }
